@@ -1,4 +1,5 @@
 import flet as ft
+import math
 
 
 class CalcButton(ft.ElevatedButton):
@@ -18,8 +19,8 @@ class DigitButton(CalcButton):
 
 
 class ActionButton(CalcButton):
-    def __init__(self, text, button_clicked):
-        CalcButton.__init__(self, text, button_clicked)
+    def __init__(self, text, button_clicked,expand=1):
+        CalcButton.__init__(self, text, button_clicked,expand)
         self.bgcolor = ft.colors.ORANGE
         self.color = ft.colors.WHITE
 
@@ -30,6 +31,12 @@ class ExtraActionButton(CalcButton):
         self.bgcolor = ft.colors.BLUE_GREY_100
         self.color = ft.colors.BLACK
 
+class AdvancedMath(CalcButton):
+    def __init__(self, text, button_clicked,expand=1):
+        CalcButton.__init__(self, text, button_clicked,expand)
+        self.bgcolor = ft.colors.BLUE_GREY_100
+        self.color = ft.colors.GREY
+
 
 class CalculatorApp(ft.Container):
     # application's root control (i.e. "view") containing all other controls
@@ -37,8 +44,8 @@ class CalculatorApp(ft.Container):
         super().__init__()
         self.reset()
 
-        self.result = ft.Text(value="0", color=ft.colors.WHITE, size=20)
-        self.width = 350
+        self.result = ft.Text(value="0", color=ft.colors.WHITE, size=30)
+        self.width = 400
         self.bgcolor = ft.colors.BLACK
         self.border_radius = ft.border_radius.all(20)
         self.padding = 20
@@ -47,6 +54,7 @@ class CalculatorApp(ft.Container):
                 ft.Row(controls=[self.result], alignment="end"),
                 ft.Row(
                     controls=[
+                        AdvancedMath(text="x²",expand=1.5,button_clicked=self.button_clicked),
                         ExtraActionButton(
                             text="AC", button_clicked=self.button_clicked
                         ),
@@ -59,6 +67,7 @@ class CalculatorApp(ft.Container):
                 ),
                 ft.Row(
                     controls=[
+                        AdvancedMath(text="x³",expand=1.5,button_clicked=self.button_clicked),
                         DigitButton(text="7", button_clicked=self.button_clicked),
                         DigitButton(text="8", button_clicked=self.button_clicked),
                         DigitButton(text="9", button_clicked=self.button_clicked),
@@ -67,6 +76,7 @@ class CalculatorApp(ft.Container):
                 ),
                 ft.Row(
                     controls=[
+                        AdvancedMath(text="sin",expand=1.5,button_clicked=self.button_clicked),
                         DigitButton(text="4", button_clicked=self.button_clicked),
                         DigitButton(text="5", button_clicked=self.button_clicked),
                         DigitButton(text="6", button_clicked=self.button_clicked),
@@ -75,6 +85,7 @@ class CalculatorApp(ft.Container):
                 ),
                 ft.Row(
                     controls=[
+                        AdvancedMath(text="cos",expand=1.5,button_clicked=self.button_clicked),
                         DigitButton(text="1", button_clicked=self.button_clicked),
                         DigitButton(text="2", button_clicked=self.button_clicked),
                         DigitButton(text="3", button_clicked=self.button_clicked),
@@ -83,9 +94,9 @@ class CalculatorApp(ft.Container):
                 ),
                 ft.Row(
                     controls=[
-                        DigitButton(
-                            text="0", expand=2, button_clicked=self.button_clicked
-                        ),
+                        AdvancedMath(text="tan",expand=1.5,button_clicked=self.button_clicked),
+                        DigitButton(text="0", button_clicked=self.button_clicked),
+                        DigitButton(text="00", button_clicked=self.button_clicked),
                         DigitButton(text=".", button_clicked=self.button_clicked),
                         ActionButton(text="=", button_clicked=self.button_clicked),
                     ]
@@ -100,7 +111,7 @@ class CalculatorApp(ft.Container):
             self.result.value = "0"
             self.reset()
 
-        elif data in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "."):
+        elif data in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0","00","."):
             if self.result.value == "0" or self.new_operand == True:
                 self.result.value = data
                 self.new_operand = False
@@ -136,6 +147,25 @@ class CalculatorApp(ft.Container):
                 self.result.value = str(
                     self.format_number(abs(float(self.result.value)))
                 )
+        
+        elif data in ("x²"):
+            self.result.value = float(self.result.value)**2
+            self.reset()
+
+        elif data == ("x³"):
+            self.result.value = float(self.result.value)**3
+
+        elif data in ("sin"):
+            self.result.value = self.format_number(math.sin(math.radians(float(self.result.value))))
+            self.reset()
+        
+        elif data in ("cos"):
+            self.result.value = self.format_number(math.cos(math.radians(float(self.result.value))))
+            self.reset()
+
+        elif data in ("tan"):
+            self.result.value = self.format_number(math.tan(math.radians(float(self.result.value))))
+            self.reset()
 
         self.update()
 
