@@ -1,134 +1,176 @@
-import requests
-import json
-import os
 import flet as ft
+import requests
 
-class WeatherForecastApp:
-    def __init__(self, page: ft.Page):
-        self.page = page
-        self.page.title = "天気予報アプリ"
-        self.page.window_width = 900
-        self.page.window_height = 700
+# エンドポイントのURL
+AREA_URL = "https://www.jma.go.jp/bosai/common/const/area.json"
+FORECAST_URL = "https://www.jma.go.jp/bosai/forecast/data/forecast/{}.json"
 
-        # API エンドポイント
-        self.AREA_LIST_URL = "http://www.jma.go.jp/bosai/common/const/area.json"
-        self.FORECAST_URL_TEMPLATE = "https://www.jma.go.jp/bosai/forecast/data/forecast/{}.json"
+# 地域データを取得して階層構造を作成
+def get_area_hierarchy():
+    try:
+        response = requests.get(AREA_URL)
+        response.raise_for_status()
+        areas_data = response.json()
 
-        # ローカル地域データファイルパス
-        self.LOCAL_AREA_FILE = '/Users/hinenoyamao/Lecture/DSp2/jma/areas.json'
+        # 階層的にデータを統合
+        hierarchy = {
+            "centers": areas_data["centers"],
+            "offices": areas_data["offices"]
+        }
+        return hierarchy
+    except requests.RequestException as e:
+        print(f"Error fetching area hierarchy: {e}")
+        return None
 
-        # UIコンポーネント
-        self.forecast_container = ft.Container(expand=True)
-        self.region_dropdown = ft.Dropdown(expand=True, on_change=self._update_regions)
-        self.sub_region_dropdown = ft.Dropdown(expand=True, on_change=self._update_weather)
+# 天気予報情報を取得する関数
+def get_forecast(office_code):
+    try:
+        response = requests.get(FORECAST_URL.format(office_code))
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Error fetching forecast for office_code {office_code}: {e}")
+        return None
 
-        # 地域リスト
-        self.area_list = {}
-        self.centers = {}
-        self.offices = {}
+# 詳細地域の3日分の天気予報を取得
+def get_3day_forecast(forecast_data, detail_code):
+    if not forecast_data:
+        return "天気予報データがありません"
 
-        # 地域データを取得
-        self._fetch_area_list()
+    weather_info = ""
+    try:
+        # areas内を探索し、detail_codeに一致する地域を見つける
+        for time_series in forecast_data[0]["timeSeries"]:
+            if "timeDefines" in time_series and "areas" in time_series:
+                time_defines = time_series["timeDefines"]
+                for area in time_series["areas"]:
+                    if area["area"]["code"] == detail_code:
+                        # 3日分のデータを取得
+                        for i in range(min(3, len(time_defines))):
+                            date = time_defines[i]
+                            weather = area.get("weathers", ["不明"])[i] if "weathers" in area else "不明"
+                            wind = area.get("winds", ["不明"])[i] if "winds" in area else "不明"
+                            wave = area.get("waves", ["不明"])[i] if "waves" in area else "不明"
 
-        # メインレイアウトを構築
-        self._build_layout()
+                            weather_info += (
+                                f"日付: {date}\n"
+                                f"天気: {weather}\n"
+                                f"風: {wind}\n"
+                                f"波: {wave}\n\n"
+                            )
+                        return weather_info
+    except (KeyError, IndexError):
+        return "指定されたデータ形式に一致する予報データがありません"
+    
+    return "該当する天気予報データが見つかりません"
 
-    def _fetch_area_list(self):
-        """地域リストを取得 (ローカル or API)"""
-        try:
-            # ローカルファイルがあれば優先
-            if os.path.exists(self.LOCAL_AREA_FILE):
-                with open(self.LOCAL_AREA_FILE, 'r', encoding='utf-8') as f:
-                    self.area_list = json.load(f)
-            else:
-                response = requests.get(self.AREA_LIST_URL)
-                response.raise_for_status()
-                self.area_list = response.json()
-
-            self.centers = self.area_list.get("centers", {})
-            self.offices = self.area_list.get("offices", {})
-        except (FileNotFoundError, requests.RequestException, json.JSONDecodeError) as e:
-            print(f"地域リストの取得に失敗: {e}")
-
-    def _update_regions(self, e):
-        """メイン地域選択に応じてサブ地域リストを更新"""
-        region_code = self.region_dropdown.value
-        if region_code:
-            children = self.centers.get(region_code, {}).get("children", [])
-            self.sub_region_dropdown.options = [
-                ft.dropdown.Option(key=child, text=self.offices.get(child, {}).get("name", "Unknown")) for child in children
-            ]
-            self.sub_region_dropdown.update()
-
-    def _update_weather(self, e):
-        """サブ地域選択に応じて天気予報を取得して表示"""
-        area_code = self.sub_region_dropdown.value
-        forecast_info = ft.Column(expand=True)
-        self.forecast_container.content = ft.Row(
-            [
-                ft.Column(
-                    [
-                        ft.Text("地域を選択してください", size=20, weight="bold"),
-                        self.region_dropdown,
-                        self.sub_region_dropdown,
-                    ],
-                    width=300,
-                    spacing=10,
-                ),
-                forecast_info
-            ],
-            expand=True
-        )
-        self.forecast_container.update()
-
-        if area_code:
-            try:
-                response = requests.get(self.FORECAST_URL_TEMPLATE.format(area_code))
-                response.raise_for_status()
-                forecast_data = response.json()
-
-                area_name = self.offices.get(area_code, {}).get("name", "Unknown")
-                forecast_info.controls.append(ft.Text(f"{area_name}の天気予報", size=20, weight="bold"))
-
-                for forecast in forecast_data:
-                    for time_series in forecast['timeSeries']:
-                        for area in time_series['areas']:
-                            if area['area']['code'] == area_code:
-                                for time, weather in zip(time_series['timeDefines'], area.get('weathers', [])):
-                                    forecast_info.controls.append(ft.Text(f"{time}: {weather}"))
-
-                forecast_info.update()
-            except requests.RequestException as e:
-                forecast_info.controls.append(ft.Text(f"天気予報の取得に失敗: {e}", color=ft.colors.RED))
-                forecast_info.update()
-
-    def _build_layout(self):
-        """アプリ全体のレイアウトを構築"""
-        self.forecast_container.content = ft.Row(
-            [
-                ft.Column(
-                    [
-                        ft.Text("地域を選択してください", size=20, weight="bold"),
-                        self.region_dropdown,
-                        self.sub_region_dropdown,
-                    ],
-                    width=300,
-                    spacing=10,
-                ),
-                ft.Container(expand=True, bgcolor=ft.colors.SURFACE, padding=10)
-            ],
-            expand=True
-        )
-        self.page.add(self.forecast_container)
-
-        # 地域ドロップダウンの初期化
-        self.region_dropdown.options = [
-            ft.dropdown.Option(key=code, text=info['name']) for code, info in self.centers.items()
-        ]
-        self.region_dropdown.update()
-
+# Fletアプリケーションのメイン関数
 def main(page: ft.Page):
-    WeatherForecastApp(page)
+    page.title = "三層構造 地域選択 天気予報"
+    page.padding = 20
 
-if __name__ == "__main__":
-    ft.app(target=main)
+    # 地域データを取得
+    area_hierarchy = get_area_hierarchy()
+    if area_hierarchy is None:
+        page.add(ft.Text("地域データの取得に失敗しました"))
+        return
+
+    # ドロップダウン
+    centers_dropdown = ft.Dropdown(label="地方を選択してください", options=[])
+    offices_dropdown = ft.Dropdown(label="地域を選択してください", options=[], disabled=True)
+    details_dropdown = ft.Dropdown(label="詳細地域を選択してください", options=[], disabled=True)
+    forecast_text = ft.Text()
+
+    # 地方選択後の地域更新
+    def update_offices(e):
+        selected_center = centers_dropdown.value
+        print(f"選択された地方: {selected_center}")
+        if not selected_center:
+            offices_dropdown.options = []
+            offices_dropdown.disabled = True
+            details_dropdown.options = []
+            details_dropdown.disabled = True
+        else:
+            offices = [
+                ft.dropdown.Option(key=key, text=value["name"])
+                for key, value in area_hierarchy["offices"].items()
+                if value["parent"] == selected_center
+            ]
+            print(f"取得された地域: {offices}")
+            offices_dropdown.options = offices
+            offices_dropdown.disabled = False
+        details_dropdown.options = []
+        details_dropdown.disabled = True
+        page.update()
+
+    # 地域選択後の詳細地域更新
+    def update_details(e):
+        selected_office = offices_dropdown.value
+        print(f"選択された地域コード: {selected_office}")
+
+        if not selected_office:
+            details_dropdown.options = []
+            details_dropdown.disabled = True
+        else:
+            # 天気予報データを取得（officeコードを使用）
+            forecast_data = get_forecast(selected_office)
+            if not forecast_data:
+                forecast_text.value = "天気予報データを取得できませんでした"
+                details_dropdown.options = []
+                details_dropdown.disabled = True
+                page.update()
+                return
+
+            # areasから詳細地域名を取得
+            details = [
+                ft.dropdown.Option(key=area["area"]["code"], text=area["area"]["name"])
+                for area in forecast_data[0]["timeSeries"][0]["areas"]
+            ]
+            print(f"取得された詳細地域: {details}")
+            details_dropdown.options = details
+            details_dropdown.disabled = False
+        page.update()
+
+    # 詳細地域の天気予報を表示
+    def show_forecast(e):
+        selected_detail = details_dropdown.value
+
+        print(f"選択された詳細地域コード: {selected_detail}")
+
+        if not selected_detail:
+            forecast_text.value = "詳細地域を選択してください"
+            page.update()
+            return
+
+        # 天気予報データを取得
+        selected_office = offices_dropdown.value
+        forecast_data = get_forecast(selected_office)
+        if not forecast_data:
+            forecast_text.value = "天気予報を取得できませんでした"
+            page.update()
+            return
+
+        # 詳細地域の3日分天気予報を取得
+        detail_forecast = get_3day_forecast(forecast_data, selected_detail)
+        forecast_text.value = detail_forecast
+        page.update()
+
+    # 地方選択ドロップダウンの初期化
+    centers_dropdown.options = [
+        ft.dropdown.Option(key=key, text=value["name"])
+        for key, value in area_hierarchy["centers"].items()
+    ]
+    centers_dropdown.on_change = update_offices
+    offices_dropdown.on_change = update_details
+
+    # ボタン
+    button = ft.ElevatedButton(
+        text="天気予報を表示",
+        on_click=show_forecast,
+    )
+
+    # ページレイアウト
+    page.add(centers_dropdown, offices_dropdown, details_dropdown, button, forecast_text)
+
+# アプリケーションを起動
+ft.app(target=main)
