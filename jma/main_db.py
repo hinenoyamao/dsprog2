@@ -68,7 +68,9 @@ area_data = response.json()
 
 # regions（地方）テーブルにデータを挿入します。
 regions = area_data["centers"]
-for region_id, info in regions.items():
+# regionsをキーでソートして挿入順を制御
+for region_id in sorted(regions.keys()):
+    info = regions[region_id]
     region_name = info["name"]
     cursor.execute('''
         INSERT OR IGNORE INTO regions (region_id, region_name)
@@ -77,7 +79,9 @@ for region_id, info in regions.items():
 
 # prefectures（都道府県）テーブルにデータを挿入します。
 prefectures = area_data["offices"]
-for prefecture_id, info in prefectures.items():
+# prefecturesをキーでソートして挿入順を制御
+for prefecture_id in sorted(prefectures.keys()):
+    info = prefectures[prefecture_id]
     prefecture_name = info["name"]
     region_id = info["parent"]
     cursor.execute('''
@@ -89,7 +93,9 @@ conn.commit()
 
 # areas（一次細分区域）テーブルにデータを挿入します。
 class10s = area_data["class10s"]
-for area_id, info in class10s.items():
+# class10sをキーでソートして挿入順を制御
+for area_id in sorted(class10s.keys()):
+    info = class10s[area_id]
     area_name = info["name"]
     prefecture_id = info["parent"]
     cursor.execute('''
@@ -125,21 +131,21 @@ def insert_weather_forecasts(prefecture_id):
                 if cursor.fetchone() is None:
                     continue  # 存在しない場合はスキップ
                 
-                # 各種データが存在する場合に取得します（3日分のみ）
-                num_times = min(3, len(time_defines))
-                time_defines = time_defines[:num_times]
-                weathers = area.get("weathers", [])[:num_times]
-                winds = area.get("winds", [])[:num_times]
-                waves = area.get("waves", [])[:num_times]
+                # 各種データを取得します（すべての日付）
+                num_times = len(time_defines)
+                dates = [datetime.datetime.fromisoformat(td).date() for td in time_defines]
+                weathers = area.get("weathers", [])
+                winds = area.get("winds", [])
+                waves = area.get("waves", [])
                 
                 for i in range(num_times):
-                    date = datetime.datetime.fromisoformat(time_defines[i]).date()
+                    date = dates[i]
                     weather = weathers[i] if i < len(weathers) else None
+                    wind = winds[i] if i < len(winds) else None
+                    wave = waves[i] if i < len(waves) else None
                     # 天気情報がない場合はスキップ
                     if not weather:
                         continue
-                    wind = winds[i] if i < len(winds) else None
-                    wave = waves[i] if i < len(waves) else None
                     # 天気予報データを挿入または更新します。
                     cursor.execute('''
                         INSERT INTO weather_forecasts (area_id, date, weather, wind, wave)
@@ -168,83 +174,21 @@ for prefecture in prefectures_list:
 # データベース接続を閉じます。
 conn.close()
 
-import flet
-from flet import Page, Column, Text, colors
-import sqlite3
-
-def main(page: Page):
-    page.title = "天気予報データの階層的表示"
-    page.window_width = 800
-    page.window_height = 600
-    page.scroll = "adaptive"
-    page.update()
-
-    # データベースに接続します
-    conn = sqlite3.connect('weather.db')
-    cursor = conn.cursor()
-
-    # 地方を取得します
-    cursor.execute('SELECT region_id, region_name FROM regions')
-    regions = cursor.fetchall()
-
-    # メインのColumnを作成します
-    main_column = Column()
-    
-    for region_id, region_name in regions:
-        # 地方名を表示
-        region_text = Text(region_name, size=24, weight="bold", color=colors.BLUE)
-        main_column.controls.append(region_text)
-        
-        # 地方に属する都道府県を取得します
-        cursor.execute('''
-        SELECT prefecture_id, prefecture_name FROM prefectures
-        WHERE region_id = ?
-        ''', (region_id,))
-        prefectures = cursor.fetchall()
-        
-        for prefecture_id, prefecture_name in prefectures:
-            # 都道府県名を表示（インデント）
-            prefecture_text = Text(f"└ {prefecture_name}", size=20, weight="bold", color=colors.BLUE_ACCENT)
-            main_column.controls.append(prefecture_text)
-            
-            # 都道府県に属するエリアを取得します
-            cursor.execute('''
-            SELECT area_id, area_name FROM areas WHERE prefecture_id = ?
-            ''', (prefecture_id,))
-            areas = cursor.fetchall()
-            
-            for area_id, area_name in areas:
-                # エリア名を表示（さらにインデント）
-                area_text = Text(f"    └ {area_name}", size=16, weight="bold", color=colors.GREEN)
-                main_column.controls.append(area_text)
-                
-                # エリアの天気予報を取得します
-                cursor.execute('''
-                SELECT date, weather, wind, wave FROM weather_forecasts
-                WHERE area_id = ? AND date >= DATE('now')
-                ORDER BY date
-                ''', (area_id,))
-                forecasts = cursor.fetchall()
-                
-                for forecast in forecasts:
-                    date, weather, wind, wave = forecast
-                    # 天気予報を表示（さらにインデント）
-                    forecast_text = Text(
-                        f"        - 日付: {date}, 天気: {weather}, 風: {wind}, 波: {wave}",
-                        size=14
-                    )
-                    main_column.controls.append(forecast_text)
-
-    # ページにメインのColumnを追加します
-    page.add(main_column)
-
-    # データベース接続を閉じます
-    conn.close()
-
 import flet as ft
 import sqlite3
 
 def main(page: ft.Page):
+    page.title = "天気予報アプリ"
+    page.padding = 20
+    page.bgcolor = ft.colors.BLUE_GREY_100 
+
+    # ヘッダー
+    header = ft.Container(
+        content=ft.Text("天気予報", size=30, weight="bold", color=ft.colors.WHITE),
+        padding=15,
+        alignment=ft.alignment.center,
+        bgcolor=ft.colors.INDIGO_300,  
+    )
     # データベースに接続します
     conn = sqlite3.connect('jma/weather.db')
     cursor = conn.cursor()
@@ -254,16 +198,16 @@ def main(page: ft.Page):
     selected_prefecture_id = None
     selected_area_id = None
     
-    # 地方のデータを取得
-    cursor.execute('SELECT region_id, region_name FROM regions ORDER BY region_name')
+    # 地方のデータを取得（データベースの順番で）
+    cursor.execute('SELECT region_id, region_name FROM regions')
     regions = cursor.fetchall()
     
     # イベントハンドラを定義
     def on_region_change(e):
         nonlocal selected_region_id
         selected_region_id = region_dropdown.value
-        # 都道府県ドロップダウンを更新
-        cursor.execute('SELECT prefecture_id, prefecture_name FROM prefectures WHERE region_id = ? ORDER BY prefecture_name', (selected_region_id,))
+        # 都道府県ドロップダウンを更新（データベースの順番で）
+        cursor.execute('SELECT prefecture_id, prefecture_name FROM prefectures WHERE region_id = ?', (selected_region_id,))
         prefectures = cursor.fetchall()
         prefecture_dropdown.options = [ft.dropdown.Option(pref_id, pref_name) for pref_id, pref_name in prefectures]
         prefecture_dropdown.disabled = False
@@ -284,8 +228,8 @@ def main(page: ft.Page):
     def on_prefecture_change(e):
         nonlocal selected_prefecture_id
         selected_prefecture_id = prefecture_dropdown.value
-        # エリアドロップダウンを更新
-        cursor.execute('SELECT area_id, area_name FROM areas WHERE prefecture_id = ? ORDER BY area_name', (selected_prefecture_id,))
+        # エリアドロップダウンを更新（データベースの順番で）
+        cursor.execute('SELECT area_id, area_name FROM areas WHERE prefecture_id = ?', (selected_prefecture_id,))
         areas = cursor.fetchall()
         area_dropdown.options = [ft.dropdown.Option(area_id, area_name) for area_id, area_name in areas]
         area_dropdown.disabled = False
@@ -302,8 +246,10 @@ def main(page: ft.Page):
     def on_area_change(e):
         nonlocal selected_area_id
         selected_area_id = area_dropdown.value
-        # 日付ドロップダウンを更新
-        cursor.execute('SELECT DISTINCT date FROM weather_forecasts WHERE area_id = ? AND date >= DATE("now") ORDER BY date', (selected_area_id,))
+        # 日付ドロップダウンを更新（ソートして表示）
+        cursor.execute('''
+        SELECT DISTINCT date FROM weather_forecasts WHERE area_id = ? ORDER BY date
+        ''', (selected_area_id,))
         dates = cursor.fetchall()
         date_dropdown.options = [ft.dropdown.Option(str(date[0]), str(date[0])) for date in dates]
         date_dropdown.disabled = False
@@ -356,6 +302,7 @@ def main(page: ft.Page):
     
     # ページにウィジェットを追加
     page.add(
+        header,
         region_dropdown,
         prefecture_dropdown,
         area_dropdown,
