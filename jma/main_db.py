@@ -189,14 +189,14 @@ import sqlite3
 def main(page: ft.Page):
     page.title = "天気予報アプリ"
     page.padding = 20
-    page.bgcolor = ft.colors.BLUE_GREY_100 
+    page.bgcolor = ft.Colors.BLUE_GREY_100 
 
     # ヘッダー
     header = ft.Container(
-        content=ft.Text("天気予報", size=30, weight="bold", color=ft.colors.WHITE),
+        content=ft.Text("天気予報", size=30, weight="bold", color=ft.Colors.WHITE),
         padding=15,
         alignment=ft.alignment.center,
-        bgcolor=ft.colors.INDIGO_300,  
+        bgcolor=ft.Colors.INDIGO_300,  
     )
     # データベースに接続します
     conn = sqlite3.connect('jma/weather.db')
