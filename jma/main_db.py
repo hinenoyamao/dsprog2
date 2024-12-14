@@ -2,8 +2,17 @@ import sqlite3
 import requests
 import datetime
 
-# データベースに接続します。
-conn = sqlite3.connect('jma/weather.db')
+import os
+
+db_path = 'jma/weather.db'
+
+# ディレクトリの確認
+db_dir = os.path.dirname(db_path)
+if not os.path.exists(db_dir):
+    os.makedirs(db_dir)
+
+# データベース接続
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 # ------------------------------
